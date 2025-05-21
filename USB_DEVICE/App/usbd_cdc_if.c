@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "comm_pro.h"
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -94,6 +95,8 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
+static void (*On_Data_RX)(_sRx *rx, uint8_t data) = NULL;
+
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -109,6 +112,8 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
+extern uint8_t bufRx[SIZEBUFRX];
+extern _sRx 				rx;
 
 /* USER CODE END EXPORTED_VARIABLES */
 
@@ -125,7 +130,6 @@ static int8_t CDC_Init_FS(void);
 static int8_t CDC_DeInit_FS(void);
 static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length);
 static int8_t CDC_Receive_FS(uint8_t* pbuf, uint32_t *Len);
-
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
 
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
@@ -259,9 +263,14 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-  if (Buf[0] == 'a') {
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // Por ejemplo, toggle de un LED
-  }
+//  if (Buf[0] == 'a') {
+//	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // Por ejemplo, toggle de un LED
+//  }
+	for(short i = 0;i < *Len;i++){
+		On_Data_RX(&rx,Buf[i]);
+	}
+//  char msg[] = "Dato recibido\r\n";
+//  CDC_Transmit_FS((uint8_t*)msg, strlen(msg));
 
   // Reestablecer recepción USB
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
@@ -296,6 +305,9 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+void CDC_Attach_RX_Funct(void(*rxFunction)(_sRx *rx, uint8_t data)){
+	On_Data_RX = rxFunction;
+}
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 

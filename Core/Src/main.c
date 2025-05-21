@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "comm_pro.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,17 +47,31 @@
 
 /* USER CODE BEGIN PV */
 
+uint8_t 			bufRx[SIZEBUFRX];
+uint8_t 			bufTx[SIZEBUFTX];
+_sRx 				rx;
+_sTx 				tx;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
+void sendByteOverUSB(uint8_t *byte);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void sendByteOverUSB(uint8_t *byte)
+{
+    // CDC_Transmit_FS envía un buffer, acá mandamos 1 byte
+    while(CDC_Transmit_FS(byte, 1) == USBD_BUSY){
+        // Esperar o hacer algo mientras el USB está ocupado
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -78,6 +92,11 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  UNER_Init(&tx, bufTx, &rx, bufRx);
+
+  UNER_SetTxFunction(sendByteOverUSB);
+
+  CDC_Attach_RX_Funct(&UNER_OnRxByte, &rx);
 
   /* USER CODE END Init */
 
@@ -99,10 +118,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-	  uint8_t mensaje[] = "Hola PC desde STM32\r\n";
-	  CDC_Transmit_FS(mensaje, strlen((char*)mensaje));
-	  HAL_Delay(1000);  // Enviar cada 1 segundo (opcional)
+	  UNER_SerialTask(&tx, &rx);
+	  //uint8_t mensaje[] = "Hola PC desde STM32\r\n";
+	  //CDC_Transmit_FS(mensaje, strlen((char*)mensaje));
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
