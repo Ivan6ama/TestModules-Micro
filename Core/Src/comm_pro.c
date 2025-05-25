@@ -1,17 +1,28 @@
+/**
+ * @file comm_pro.c
+ * @brief Implementación del protocolo de comunicación serial UNER.
+ */
+
 #include "comm_pro.h"
 
-
-// Variables internas
-static txFunct_t sendFunction;  // Puntero a función de envío
+/// Puntero a función para enviar el buffer serial
+static txFunct_t sendFunction;
+/// Último comando decodificado
 static _eCmd CMDID;
+/// Estado actual del protocolo
 static _eProtocol protocolState;
 
+/**
+ * @brief Asigna la función de transmisión para el protocolo.
+ */
 void UNER_SetTxFunction(txFunct_t func)
 {
     sendFunction = func;
 }
 
-// Inicialización buffers y estructuras
+/**
+ * @brief Inicializa las estructuras de transmisión y recepción.
+ */
 void UNER_Init(_sTx *tx, uint8_t *txBuf, _sRx *rx, uint8_t *rxBuf)
 {
     tx->buf = txBuf;
@@ -33,27 +44,37 @@ void UNER_Init(_sTx *tx, uint8_t *txBuf, _sRx *rx, uint8_t *rxBuf)
     CMDID = UNKNOWN;
 }
 
-// Tarea que debe llamarse periódicamente
+/**
+ * @brief Lógica periódica de recepción y transmisión de datos.
+ */
 void UNER_SerialTask(_sTx *tx, _sRx *rx)
 {
-    if(rx->iw != rx->ir){
+    if (rx->iw != rx->ir) {
         UNER_DecodeHeader(rx, tx);
     }
 
-    if(tx->ir != tx->iw){
-    	sendFunction(&tx->buf[tx->ir]);
+    if (tx->ir != tx->iw) {
+        sendFunction(&tx->buf[tx->ir]);
         tx->ir++;
         tx->ir &= tx->length;
     }
 }
 
-// Llamar esta función por cada byte recibido (por ejemplo, en interrupción UART)
+/**
+ * @brief Almacena cada byte recibido en el buffer.
+ */
 void UNER_OnRxByte(_sRx *rx, uint8_t data)
 {
     rx->buf[rx->iw++] = data;
     rx->iw &= rx->length;
 }
 
+
+/**
+ * @brief Decodifica el encabezado del protocolo UNER.
+ * @param rx Buffer de recepción.
+ * @param tx Buffer de transmisión.
+ */
 void UNER_DecodeHeader(_sRx *rx, _sTx *tx)
 {
     uint8_t i = rx->iw;
