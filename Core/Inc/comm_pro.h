@@ -52,20 +52,12 @@ typedef union {
  * @brief Comandos disponibles en el protocolo.
  */
 typedef enum {
-    ALIVE = 0xF0,
-    ACK = 0x0D,
-    FIRMWARE = 0xF1,
-    ASENSORS = 0xA0,
-    MOTORTEST = 0xA1,
-    SERVOANGLE = 0xA2,
-    ULTRADIST = 0xA3,
-    MOTORVEL = 0xA4,
-    SERVOCONFIG = 0xA5,
-    LASTBLACK = 0xA6,
-    LASTWHITE = 0xA7,
-    ROBOTDATA = 0xA8,
-    TEST = 0xA9,
-    UNKNOWN = 0xFF
+    ALIVE 			= 0xF0,
+    ACK 			= 0x0D,
+    FIRMWARE 		= 0xF1,
+	UIMOTORS        = 0X01,
+	UIDISPLAY       = 0x02,
+    UNKNOWN 		= 0xFF
 } _eCmd;
 
 /**
@@ -83,6 +75,8 @@ typedef enum {
 
 /// Puntero a función para enviar datos
 typedef void (*txFunct_t)(uint8_t *buf);
+typedef void (*UNER_ApplicationCallback_t)(_eCmd cmd, _uWork *data);
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,7 +107,7 @@ void UNER_DecodeHeader(_sRx *rx, _sTx *tx);
 /**
  * @brief Decodifica el payload del mensaje recibido.
  */
-void UNER_DecodePayload(uint8_t rxBuf, _sTx *tx);
+void UNER_DecodePayload(uint8_t rxBuf, _sTx *tx, _sRx *rx);
 
 /**
  * @brief Escribe el contenido de la respuesta en el buffer de transmisión.
@@ -139,6 +133,10 @@ uint8_t UNER_PutStrOnTx(_sTx *tx, const char *str);
  * @brief Escribe el contenido de la respuesta en el buffer de transmisión.
  */
 void UNER_SetTxFunction(txFunct_t func);
+
+
+
+void UNER_SetAppCallback(UNER_ApplicationCallback_t callback);
 
 #ifdef __cplusplus
 }

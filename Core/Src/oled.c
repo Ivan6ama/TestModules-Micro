@@ -21,7 +21,6 @@
    ----------------------------------------------------------------------
  */
 #include <oled.h>
-#include "usbd_cdc_if.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -38,8 +37,6 @@ extern I2C_HandleTypeDef hi2c1;
 /* SSD1306 data buffer */
 static uint8_t SSD1306_Buffer[SSD1306_WIDTH * SSD1306_HEIGHT / 8];
 
-/* USB */
-extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* Private SSD1306 structure */
 typedef struct {
@@ -57,7 +54,6 @@ extern volatile uint8_t i2c1_tx_busy;   // // Flag que indica si el DMA de I2C1 
 static uint8_t dma_tx_buffer[1 + 255];	// Buffer estático para la transferencia: reg + hasta 255 bytes de datos
 
 volatile uint8_t ssd_update_done = 1;
-
 
 #define SSD1306_RIGHT_HORIZONTAL_SCROLL              0x26
 #define SSD1306_LEFT_HORIZONTAL_SCROLL               0x27
@@ -176,47 +172,21 @@ void SSD1306_DrawBitmap(int16_t x, int16_t y, const unsigned char* bitmap, int16
 }
 
 
-
-/**
- * @brief  Envía un mensaje formateado por USB CDC (VCP), en trozos de 64 bytes.
- */
-static void USB_Debug(const char *fmt, ...) {
-    char buf[128];
-    va_list ap;
-    va_start(ap, fmt);
-    int len = vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) {
-        return;  // No enviar si no estamos enumerados
-    }
-
-    uint8_t *p = (uint8_t*)buf;
-    while (len > 0) {
-        uint16_t chunk = (len > 64) ? 64 : len;
-        while (CDC_Transmit_FS(p, chunk) == USBD_BUSY) {
-            HAL_Delay(1);
-        }
-        p   += chunk;
-        len -= chunk;
-    }
-}
-
 uint8_t SSD1306_Init(void) {
-    USB_Debug("SSD1306_Init: Inicializando I2C...\r\n");
+    //USB_Debug("SSD1306_Init: Inicializando I2C...\r\n");
     SSD1306_I2C_Init();
 
-    USB_Debug("SSD1306_Init: Comprobando I2C addr=0x%02X...\r\n", SSD1306_I2C_ADDR);
+    //USB_Debug("SSD1306_Init: Comprobando I2C addr=0x%02X...\r\n", SSD1306_I2C_ADDR);
     if (HAL_I2C_IsDeviceReady(&hi2c1, SSD1306_I2C_ADDR, 1, 2000) != HAL_OK) {
-        USB_Debug("SSD1306_Init: ERROR, no responde I2C\r\n");
+        //USB_Debug("SSD1306_Init: ERROR, no responde I2C\r\n");
         return 0;
     }
-    USB_Debug("SSD1306_Init: I2C OK\r\n");
+    //USB_Debug("SSD1306_Init: I2C OK\r\n");
 
-    USB_Debug("SSD1306_Init: Retardo inicial...\r\n");
+    //USB_Debug("SSD1306_Init: Retardo inicial...\r\n");
     for (volatile uint32_t p = 250000; p; --p) { __NOP(); }
 
-    USB_Debug("SSD1306_Init: Enviando comandos de init...\r\n");
+    //USB_Debug("SSD1306_Init: Enviando comandos de init...\r\n");
     SSD1306_WRITECOMMAND(0xAE);
     SSD1306_WRITECOMMAND(0x20);
     SSD1306_WRITECOMMAND(0x10);
@@ -247,30 +217,30 @@ uint8_t SSD1306_Init(void) {
     SSD1306_WRITECOMMAND(0xAF);
 
     SSD1306_WRITECOMMAND(SSD1306_DEACTIVATE_SCROLL);
-    USB_Debug("SSD1306_Init: Comandos init enviados\r\n");
+    //USB_Debug("SSD1306_Init: Comandos init enviados\r\n");
 
-    USB_Debug("SSD1306_Init: Limpiando pantalla...\r\n");
+    //USB_Debug("SSD1306_Init: Limpiando pantalla...\r\n");
     SSD1306_Fill(SSD1306_COLOR_BLACK);
 
-    USB_Debug("SSD1306_Init: Actualizando pantalla...\r\n");
+    //USB_Debug("SSD1306_Init: Actualizando pantalla...\r\n");
     SSD1306_UpdateScreen_Blocking();
 
     SSD1306.CurrentX = 0;
     SSD1306.CurrentY = 0;
     SSD1306.Initialized = 1;
 
-    USB_Debug("SSD1306_Init: COMPLETADO\r\n");
+    //USB_Debug("SSD1306_Init: COMPLETADO\r\n");
     return 1;
 }
 
 void SSD1306_UpdateScreen_Blocking(void) {
-    USB_Debug("SSD1306_UpdateScreen_Blocking: Comenzando actualizacion (blocking)\r\n");
+    //USB_Debug("SSD1306_UpdateScreen_Blocking: Comenzando actualizacion (blocking)\r\n");
 
     // buffer temporal: 1 byte de control + 128 bytes de datos
     uint8_t buf[1 + SSD1306_WIDTH];
 
     for (uint8_t m = 0; m < 8; m++) {
-        USB_Debug("SSD1306_UpdateScreen_Blocking: Pagina %u\r\n", m);
+        //USB_Debug("SSD1306_UpdateScreen_Blocking: Pagina %u\r\n", m);
 
         // 1) envía comandos de posicionamiento
         SSD1306_WRITECOMMAND(0xB0 + m);
@@ -291,11 +261,11 @@ void SSD1306_UpdateScreen_Blocking(void) {
                 sizeof(buf),
                 HAL_MAX_DELAY) != HAL_OK)
         {
-            USB_Debug("ERROR: I2C transmit pagina %u\r\n", m);
+            //USB_Debug("ERROR: I2C transmit pagina %u\r\n", m);
         }
     }
 
-    USB_Debug("SSD1306_UpdateScreen_Blocking: Pantalla actualizada (blocking)\r\n");
+    //USB_Debug("SSD1306_UpdateScreen_Blocking: Pantalla actualizada (blocking)\r\n");
 }
 
 
@@ -307,14 +277,15 @@ void SSD1306_UpdateScreen(void) {
 
     switch (state) {
         case 0:
-            USB_Debug("SSD1306_Update: iniciando refresco NB\r\n");
+        	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+            ////USB_Debug("SSD1306_Update: iniciando refresco NB\r\n");
             page             = 0;
             ssd_update_done  = 0;  // marca que el refresco está en curso
             state            = 1;
             // caemos en case 1 inmediatamente
         case 1:
             if (!i2c1_tx_busy) {
-                USB_Debug("SSD1306_Update: enviando pagina %u\r\n", page);
+                ////USB_Debug("SSD1306_Update: enviando pagina %u\r\n", page);
                 // enviamos comandos de posición
                 SSD1306_WRITECOMMAND(0xB0 + page);
                 SSD1306_WRITECOMMAND(0x00);
@@ -322,18 +293,19 @@ void SSD1306_UpdateScreen(void) {
                 // arrancamos DMA de datos
                 uint8_t *buf = &SSD1306_Buffer[SSD1306_WIDTH * page];
                 SSD1306_I2C_WriteMulti(SSD1306_I2C_ADDR, 0x40, buf, SSD1306_WIDTH);
-                USB_Debug("SSD1306_Update: pagina enviada\r\n", page);
+
+                ////USB_Debug("SSD1306_Update: pagina enviada\r\n", page);
                 state = 2;
             }
             break;
         case 2:
             if (!i2c1_tx_busy) {
-                USB_Debug("SSD1306_Update: página %u completada\r\n", page);
+                ////USB_Debug("SSD1306_Update: página %u completada\r\n", page);
                 page++;
                 if (page < 8) {
                     state = 1;  // preparamos la siguiente página
                 } else {
-                    USB_Debug("SSD1306_Update: refresco NB completo\r\n");
+                    ////USB_Debug("SSD1306_Update: refresco NB completo\r\n");
                     ssd_update_done = 1;
                     state           = 0;
                 }
@@ -341,7 +313,7 @@ void SSD1306_UpdateScreen(void) {
                 // <— Aquí ves si realmente sigue ocupado
             	if (counter <= 10) {
             		counter++;
-            		USB_Debug("SSD1306_Update: esperando fin de DMA, flag busy=%u\r\n", i2c1_tx_busy);
+            		////USB_Debug("SSD1306_Update: esperando fin de DMA, flag busy=%u\r\n", i2c1_tx_busy);
             	}
             }
             break;
@@ -742,11 +714,6 @@ void SSD1306_I2C_Init() {
 	uint32_t p = 250000;
 	while(p>0)
 		p--;
-	//HAL_I2C_DeInit(&hi2c1);
-	//p = 250000;
-	//while(p>0)
-	//	p--;
-	//MX_I2C1_Init();
 }
 
 
@@ -768,13 +735,18 @@ void SSD1306_I2C_WriteMulti(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t 
     }
 
     // 1) DEBUG: parámetros de la transmisión
-    //USB_Debug("WriteMulti: addr=0x%02X ctrl=0x%02X len=%u\r\n", addr, ctrl, len);
-
     i2c1_tx_busy = 1;
-    HAL_StatusTypeDef ret = HAL_I2C_Master_Transmit_DMA(&hi2c1, addr, dma_tx_buffer, len + 1);
+    HAL_StatusTypeDef ret = HAL_I2C_Mem_Write_DMA(
+        &hi2c1,
+        SSD1306_I2C_ADDR,
+        0x40,
+        I2C_MEMADD_SIZE_8BIT,
+        data,
+        len
+    );
 
     // 2) DEBUG: resultado y registros DMA
-    /*USB_Debug("Transmit_DMA returned %d, CCR=0x%08lX, CNDTR=%u\r\n",
+    /*//USB_Debug("Transmit_DMA returned %d, CCR=0x%08lX, CNDTR=%u\r\n",
               ret,
               DMA1_Channel6->CCR,
               DMA1_Channel6->CNDTR);*/
@@ -782,7 +754,6 @@ void SSD1306_I2C_WriteMulti(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t 
     if (ret != HAL_OK) {
         // Error de DMA: libéralo para no colgarte
         i2c1_tx_busy = 0;
-        USB_Debug("WriteMulti: ¡ERROR en Transmit_DMA!\r\n");
     }
 }
 

@@ -56,11 +56,16 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_FS;
+extern DMA_HandleTypeDef hdma_adc1;
 extern DMA_HandleTypeDef hdma_i2c1_tx;
 extern I2C_HandleTypeDef hi2c1;
 /* USER CODE BEGIN EV */
 
 extern volatile uint8_t i2c1_tx_busy;
+
+extern volatile uint8_t ssd_update_done;
+
+extern volatile uint8_t sensores_listos;
 
 /* USER CODE END EV */
 
@@ -203,6 +208,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles DMA1 channel1 global interrupt.
+  */
+void DMA1_Channel1_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc1);
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA1 channel6 global interrupt.
   */
 void DMA1_Channel6_IRQHandler(void)
@@ -245,10 +264,28 @@ void I2C1_EV_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance == I2C1) {
-        i2c1_tx_busy = 0;
+	if (hi2c->Instance == I2C1) {
+	    	ssd_update_done = 1;
+	    	i2c1_tx_busy = 0;
+	    }
+}
+
+//
+//void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+//{
+//
+//    if (hi2c->Instance == I2C1) {
+//    	//ssd_update_done = 1;
+//    	i2c1_tx_busy = 0;
+//    }
+//}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1) {
+        sensores_listos = 1;
     }
 }
 

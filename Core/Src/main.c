@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
 #include "comm_pro.h"
 #include "usbd_cdc_if.h"
 #include "oled.h"
@@ -47,6 +48,9 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
+
 I2C_HandleTypeDef hi2c1;
 DMA_HandleTypeDef hdma_i2c1_tx;
 
@@ -60,10 +64,24 @@ uint8_t 					bufTx[SIZEBUFTX];
 _sRx 						rx;
 _sTx 						tx;
 
+/*Motors variables*/
+int8_t						leftMotorSpeed;
+int8_t						rightMotorSpeed;
+
+
 
 /*I2C oled variables*/
 extern volatile uint8_t 	ssd_update_done;
 volatile uint8_t 			i2c1_tx_busy = 0;
+uint32_t 					lastUpdateTick = 0;
+
+
+
+/*Optical Sensors variables*/
+#define 					NUM_SENSORES 8
+
+uint16_t 					adc_valores[NUM_SENSORES];
+volatile uint8_t 			sensores_listos = 0;
 
 
 /* USER CODE END PV */
@@ -75,13 +93,65 @@ static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 void sendByteOverUSB(uint8_t *byte);
+
+void Motor_Set(int motor, int8_t speed);
+
+void Oled_Init();
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#include "main.h"
+
+
+void UNER_AppHandler(_eCmd cmd, _uWork *data)
+{
+    switch (cmd) {
+        case UIMOTORS:
+            leftMotorSpeed = data->i8[0];
+            rightMotorSpeed = data->i8[1];
+
+            //ssd_update_done = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+void Motor_Set(int motor, int8_t speed)
+{
+    // Saturar valor a -100..100
+    if (speed> 100) speed= 100;
+    if (speed< -100) speed = -100;
+
+
+    switch (motor) {
+        case 0: // Motor A → PWM: PA8 (TIM1_CH1), DIR: PA9
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, speed);
+            break;
+
+        case 1: // Motor B → PWM: PA1 (TIM2_CH2), DIR: PA0
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
+            __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, speed);
+            break;
+
+        default:
+            // Motor inválido, podés agregar error handling
+            break;
+    }
+}
+
+void Oled_Init(){
+	if (!SSD1306_Init()) {
+		while (1);
+	}
+}
+
 
 void sendByteOverUSB(uint8_t *byte)
 {
@@ -156,32 +226,24 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+
+  UNER_SetAppCallback(UNER_AppHandler);
+
 
   // Inicializacion PWM motores
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_SET);
+  leftMotorSpeed = 0;
 
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,50);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2,50);
+  Motor_Set(0, 0);
+  Motor_Set(1, 80);
 
-  // Inicialización del OLED
-      if (!SSD1306_Init()) {
-          while (1);
-      }
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_valores, NUM_SENSORES);
 
-      // Dibujamos algo (texto, figuras, etc.)
-      SSD1306_Fill(SSD1306_COLOR_BLACK);
-      SSD1306_GotoXY(0, 0);
-      SSD1306_Puts("AAAAA", &Font_7x10, SSD1306_COLOR_WHITE);
-
-      // Iniciamos refresco no bloqueante
-      ssd_update_done = 1;  // importante para que inicie desde 0
-      SSD1306_UpdateScreen();
-
+  Oled_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -189,8 +251,36 @@ int main(void)
   while (1)
   {
 	  UNER_SerialTask(&tx,&rx);
+	  lastUpdateTick = HAL_GetTick();
+
+	  char texto[20];
+	  SSD1306_GotoXY(0, 0);
+	  sprintf(texto, "LSPD: %4d", leftMotorSpeed);
+	  SSD1306_Puts("  ", &Font_7x10, SSD1306_COLOR_BLACK); // limpiar línea
+	  SSD1306_GotoXY(0, 0);
+	  SSD1306_Puts(texto, &Font_7x10, SSD1306_COLOR_WHITE);
+//	  if (HAL_GetTick() - lastUpdateTick >= 1000) {  // cada 1000 ms
+//		  lastUpdateTick = HAL_GetTick();
+//
+//		  char texto[20];
+//		  SSD1306_GotoXY(0, 0);
+//		  sprintf(texto, "LSPD: %4d", leftMotorSpeed);
+//		  SSD1306_Puts("  ", &Font_7x10, SSD1306_COLOR_BLACK); // limpiar línea
+//		  SSD1306_GotoXY(0, 0);
+//		  SSD1306_Puts(texto, &Font_7x10, SSD1306_COLOR_WHITE);
+//	  }
 
 	  SSD1306_Task();
+//	  if (sensores_listos){
+//	      sensores_listos = 0;
+//
+//	      char linea[32];
+//	      for (int i = 0; i < NUM_SENSORES; i++) {
+//	          SSD1306_GotoXY(0, i * 8);
+//	          sprintf(linea, "S%d: %4u", i, adc_valores[i]);
+//	          SSD1306_Puts(linea, &Font_7x10, SSD1306_COLOR_WHITE);
+//	      }
+//	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -236,12 +326,116 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC|RCC_PERIPHCLK_USB;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
   PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 8;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_3;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_4;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_6;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_7;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Rank = ADC_REGULAR_RANK_8;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -422,6 +616,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel6_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);

@@ -55,12 +55,17 @@ void SVC_Handler(void);
 void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
+void DMA1_Channel1_IRQHandler(void);
 void DMA1_Channel6_IRQHandler(void);
 void USB_LP_CAN1_RX0_IRQHandler(void);
 void I2C1_EV_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
-void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c);
+//void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c);
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef  *hi2c);
 
 /* USER CODE END EFP */
 

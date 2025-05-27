@@ -11,6 +11,14 @@ static txFunct_t sendFunction;
 static _eCmd CMDID;
 /// Estado actual del protocolo
 static _eProtocol protocolState;
+/// Firmware de la bluepill
+const char  firmware[] = "EX100923.01";
+/// Union de manejo de datos
+static _uWork w;
+
+
+
+static UNER_ApplicationCallback_t appCallback;
 
 /**
  * @brief Asigna la función de transmisión para el protocolo.
@@ -130,7 +138,7 @@ void UNER_DecodeHeader(_sRx *rx, _sTx *tx)
                     rx->chks ^= rx->buf[rx->ir];
                 }else{
                     if(rx->buf[rx->ir] == rx->chks){
-                        UNER_DecodePayload(rx->buf[rx->data], tx);
+                        UNER_DecodePayload(rx->buf[rx->data], tx, rx);
                     }
                     rx->header = HEADER_U;
                 }
@@ -144,12 +152,26 @@ void UNER_DecodeHeader(_sRx *rx, _sTx *tx)
     }
 }
 
-void UNER_DecodePayload(uint8_t bufRx,_sTx *tx)
+void UNER_DecodePayload(uint8_t bufRx,_sTx *tx, _sRx *rx)
 {
     switch(bufRx){
         case ALIVE:
             UNER_WriteContentTx(bufRx, tx);
         break;
+        case FIRMWARE:
+        	UNER_WriteContentTx(bufRx, tx);
+        break;
+		case UIMOTORS:
+			w.i8[0] = rx->buf[rx->data + 1];
+			w.i8[1] = rx->buf[rx->data + 2];
+
+		    appCallback(UIMOTORS, &w);
+
+			UNER_WriteContentTx(bufRx, tx);
+		break;
+		case UIDISPLAY:
+			UNER_WriteContentTx(bufRx, tx);
+		break;
         default:
             UNER_WriteContentTx(bufRx, tx);
         break;
@@ -163,6 +185,23 @@ void UNER_WriteContentTx(uint8_t bufRx,_sTx *tx)
             UNER_PutHeaderOnTx(tx, ALIVE, 2);
             UNER_PutByteOnTx(tx, ACK);
             UNER_PutByteOnTx(tx, tx->chks);
+        break;
+        case FIRMWARE:
+        	UNER_PutHeaderOnTx(tx, FIRMWARE, 18);
+			UNER_PutStrOnTx(tx, "+&DBG");
+			UNER_PutStrOnTx(tx, firmware);
+			UNER_PutByteOnTx(tx, '\n');
+			UNER_PutByteOnTx(tx, tx->chks);
+        break;
+        case UIMOTORS:
+        	UNER_PutHeaderOnTx(tx, UIMOTORS, 2);
+        	UNER_PutByteOnTx(tx, 1);
+        	UNER_PutByteOnTx(tx, tx->chks);
+        break;
+        case UIDISPLAY:
+        	UNER_PutHeaderOnTx(tx, UIDISPLAY, 2);
+        	UNER_PutByteOnTx(tx, 2);
+			UNER_PutByteOnTx(tx, tx->chks);
         break;
         default:
             UNER_PutHeaderOnTx(tx, (_eCmd)tx->buf[tx->iw], 2);
@@ -212,3 +251,9 @@ uint8_t UNER_PutStrOnTx(_sTx *tx, const char *str)
     }
     return tx->chks;
 }
+
+
+void UNER_SetAppCallback(UNER_ApplicationCallback_t callback) {
+    appCallback = callback;
+}
+
