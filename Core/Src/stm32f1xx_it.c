@@ -272,12 +272,12 @@ void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 	    }
 }
 
-//
+
 //void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 //{
 //
 //    if (hi2c->Instance == I2C1) {
-//    	//ssd_update_done = 1;
+//    	ssd_update_done = 1;
 //    	i2c1_tx_busy = 0;
 //    }
 //}

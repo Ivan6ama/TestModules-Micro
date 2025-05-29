@@ -45,7 +45,6 @@ SCL        |PB6          |Serial clock line
 SDA        |PB7          |Serial data line
  */
 
-#include "stm32f1xx_hal.h"
 
 #include <oled_fonts.h>
 
@@ -76,6 +75,14 @@ typedef enum {
 	SSD1306_COLOR_BLACK = 0x00, /*!< Black color, no pixel */
 	SSD1306_COLOR_WHITE = 0x01  /*!< Pixel is set. Color depends on LCD */
 } SSD1306_COLOR_t;
+
+
+typedef struct {
+    void (*Write)(uint8_t address, uint8_t control, uint8_t* data, uint16_t length);  // para multibyte
+    int (*WriteSingle)(uint8_t address, uint8_t control, uint8_t data);              // para 1 byte
+} OLED_IO_Interface_t;
+
+void OLED_RegisterIO(const OLED_IO_Interface_t* io);
 
 extern volatile uint8_t ssd_update_done;
 

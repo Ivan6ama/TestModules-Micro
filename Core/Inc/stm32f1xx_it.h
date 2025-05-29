@@ -65,6 +65,7 @@ void I2C1_EV_IRQHandler(void);
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
 
+//void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c);
 void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef  *hi2c);
 
 /* USER CODE END EFP */

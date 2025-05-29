@@ -83,7 +83,6 @@ uint32_t 					lastUpdateTick = 0;
 uint16_t 					adc_valores[NUM_SENSORES];
 volatile uint8_t 			sensores_listos = 0;
 
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,12 +100,29 @@ void Motor_Set(int motor, int8_t speed);
 
 void Oled_Init();
 
+void oled_hal_write(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len);
+
+int oled_hal_write_single(uint8_t addr, uint8_t ctrl, uint8_t data);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #include "main.h"
 
+void oled_hal_write(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len) {
+	uint8_t buf[len + 1]; // buffer local m
+    buf[0] = ctrl;
+    memcpy(&buf[1], data, len);
+
+    //HAL_I2C_Master_Transmit_DMA(&hi2c1, addr, buf, len + 1);
+    HAL_I2C_Mem_Write_DMA(&hi2c1, addr, ctrl, I2C_MEMADD_SIZE_8BIT, data, len);
+}
+
+int oled_hal_write_single(uint8_t addr, uint8_t ctrl, uint8_t data) {
+    uint8_t buf[2] = { ctrl, data };
+    return (HAL_I2C_Master_Transmit(&hi2c1, addr, buf, 2, HAL_MAX_DELAY) == HAL_OK) ? 0 : -1;
+}
 
 void UNER_AppHandler(_eCmd cmd, _uWork *data)
 {
@@ -125,8 +141,8 @@ void UNER_AppHandler(_eCmd cmd, _uWork *data)
 void Motor_Set(int motor, int8_t speed)
 {
     // Saturar valor a -100..100
-    if (speed> 100) speed= 100;
-    if (speed< -100) speed = -100;
+    if (speed > 100) speed = 100;
+    if (speed < -100) speed = -100;
 
 
     switch (motor) {
@@ -161,29 +177,6 @@ void sendByteOverUSB(uint8_t *byte)
     }
 }
 
-int32_t OLED_IO_Init(void) {
-    return 0; // ya está inicializado por MX_I2C1_Init()
-}
-
-int32_t OLED_IO_DeInit(void) {
-    return 0;
-}
-
-int32_t OLED_IO_Write(uint16_t Reg, uint8_t *pData, uint16_t Length) {
-    uint8_t buffer[Length + 1];
-    buffer[0] = Reg;
-    memcpy(&buffer[1], pData, Length);
-    return (HAL_I2C_Master_Transmit(&hi2c1, 0x3D << 1, buffer, Length + 1, HAL_MAX_DELAY) == HAL_OK) ? 0 : -1;
-}
-
-int32_t OLED_IO_Read(uint16_t Reg, uint8_t *pData, uint16_t Length) {
-    return (HAL_I2C_Master_Transmit(&hi2c1, 0x3D << 1, (uint8_t*)&Reg, 1, HAL_MAX_DELAY) == HAL_OK &&
-            HAL_I2C_Master_Receive(&hi2c1, 0x3D << 1, pData, Length, HAL_MAX_DELAY) == HAL_OK) ? 0 : -1;
-}
-
-int32_t OLED_IO_GetTick(void) {
-    return HAL_GetTick();
-}
 
 /* USER CODE END 0 */
 
@@ -204,6 +197,13 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  OLED_IO_Interface_t oled_hal = {
+      .Write = oled_hal_write,
+      .WriteSingle = oled_hal_write_single
+  };
+
+  OLED_RegisterIO(&oled_hal);
+
   UNER_Init(&tx, bufTx, &rx, bufRx);
 
   UNER_SetTxFunction(sendByteOverUSB);
@@ -211,6 +211,7 @@ int main(void)
   CDC_Attach_RX_Funct(&UNER_OnRxByte);
 
   /* USER CODE END Init */
+
 
   /* Configure the system clock */
   SystemClock_Config();
@@ -237,6 +238,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 
   leftMotorSpeed = 0;
+  rightMotorSpeed = 0;
 
   Motor_Set(0, 0);
   Motor_Set(1, 80);
@@ -244,6 +246,8 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_valores, NUM_SENSORES);
 
   Oled_Init();
+  SSD1306_Clear();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -251,36 +255,22 @@ int main(void)
   while (1)
   {
 	  UNER_SerialTask(&tx,&rx);
-	  lastUpdateTick = HAL_GetTick();
+
 
 	  char texto[20];
 	  SSD1306_GotoXY(0, 0);
 	  sprintf(texto, "LSPD: %4d", leftMotorSpeed);
-	  SSD1306_Puts("  ", &Font_7x10, SSD1306_COLOR_BLACK); // limpiar línea
+	  SSD1306_Puts("   ", &Font_11x18, SSD1306_COLOR_WHITE); // limpiar línea
 	  SSD1306_GotoXY(0, 0);
-	  SSD1306_Puts(texto, &Font_7x10, SSD1306_COLOR_WHITE);
-//	  if (HAL_GetTick() - lastUpdateTick >= 1000) {  // cada 1000 ms
-//		  lastUpdateTick = HAL_GetTick();
-//
-//		  char texto[20];
-//		  SSD1306_GotoXY(0, 0);
-//		  sprintf(texto, "LSPD: %4d", leftMotorSpeed);
-//		  SSD1306_Puts("  ", &Font_7x10, SSD1306_COLOR_BLACK); // limpiar línea
-//		  SSD1306_GotoXY(0, 0);
-//		  SSD1306_Puts(texto, &Font_7x10, SSD1306_COLOR_WHITE);
-//	  }
+	  SSD1306_Puts(texto, &Font_11x18, SSD1306_COLOR_BLACK);
+
+	  SSD1306_GotoXY(0, 25);
+	  sprintf(texto, "RSPD: %4d", rightMotorSpeed);
+	  SSD1306_Puts("   ", &Font_11x18, SSD1306_COLOR_WHITE); // limpiar línea
+	  SSD1306_GotoXY(0, 25);
+	  SSD1306_Puts(texto, &Font_11x18, SSD1306_COLOR_BLACK);
 
 	  SSD1306_Task();
-//	  if (sensores_listos){
-//	      sensores_listos = 0;
-//
-//	      char linea[32];
-//	      for (int i = 0; i < NUM_SENSORES; i++) {
-//	          SSD1306_GotoXY(0, i * 8);
-//	          sprintf(linea, "S%d: %4u", i, adc_valores[i]);
-//	          SSD1306_Puts(linea, &Font_7x10, SSD1306_COLOR_WHITE);
-//	      }
-//	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

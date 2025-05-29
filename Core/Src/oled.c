@@ -51,9 +51,11 @@ static SSD1306_t SSD1306;
 
 extern volatile uint8_t i2c1_tx_busy;   // // Flag que indica si el DMA de I2C1 sigue ocupando el bus
 
-static uint8_t dma_tx_buffer[1 + 255];	// Buffer estático para la transferencia: reg + hasta 255 bytes de datos
-
 volatile uint8_t ssd_update_done = 1;
+
+
+static const OLED_IO_Interface_t* oled_io = NULL;
+
 
 #define SSD1306_RIGHT_HORIZONTAL_SCROLL              0x26
 #define SSD1306_LEFT_HORIZONTAL_SCROLL               0x27
@@ -66,6 +68,10 @@ volatile uint8_t ssd_update_done = 1;
 #define SSD1306_NORMALDISPLAY       0xA6
 #define SSD1306_INVERTDISPLAY       0xA7
 
+
+void OLED_RegisterIO(const OLED_IO_Interface_t* io) {
+    oled_io = io;
+}
 
 void SSD1306_Task(void){
 	if (ssd_update_done) {
@@ -222,8 +228,6 @@ uint8_t SSD1306_Init(void) {
     //USB_Debug("SSD1306_Init: Limpiando pantalla...\r\n");
     SSD1306_Fill(SSD1306_COLOR_BLACK);
 
-    //USB_Debug("SSD1306_Init: Actualizando pantalla...\r\n");
-    SSD1306_UpdateScreen_Blocking();
 
     SSD1306.CurrentX = 0;
     SSD1306.CurrentY = 0;
@@ -254,15 +258,6 @@ void SSD1306_UpdateScreen_Blocking(void) {
                SSD1306_WIDTH);
 
         // 3) envía todo con HAL_I2C_Master_Transmit (bloqueante)
-        if (HAL_I2C_Master_Transmit(
-                &hi2c1,
-                SSD1306_I2C_ADDR,
-                buf,
-                sizeof(buf),
-                HAL_MAX_DELAY) != HAL_OK)
-        {
-            //USB_Debug("ERROR: I2C transmit pagina %u\r\n", m);
-        }
     }
 
     //USB_Debug("SSD1306_UpdateScreen_Blocking: Pantalla actualizada (blocking)\r\n");
@@ -277,7 +272,6 @@ void SSD1306_UpdateScreen(void) {
 
     switch (state) {
         case 0:
-        	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
             ////USB_Debug("SSD1306_Update: iniciando refresco NB\r\n");
             page             = 0;
             ssd_update_done  = 0;  // marca que el refresco está en curso
@@ -719,42 +713,14 @@ void SSD1306_I2C_Init() {
 
 
 void SSD1306_I2C_Write(uint8_t address, uint8_t control, uint8_t databyte) {
-    uint8_t buf[2] = { control, databyte };
-    HAL_I2C_Master_Transmit(&hi2c1, address, buf, 2, HAL_MAX_DELAY);
+	  oled_io->WriteSingle(address, control, databyte);
 }
 
 
 
 void SSD1306_I2C_WriteMulti(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len) {
-    dma_tx_buffer[0] = ctrl;
-    memcpy(&dma_tx_buffer[1], data, len);
-
-    // **Sólo** datos: espera si un envío anterior sigue vivo
-    while (i2c1_tx_busy) {
-        __WFI();
-    }
-
-    // 1) DEBUG: parámetros de la transmisión
-    i2c1_tx_busy = 1;
-    HAL_StatusTypeDef ret = HAL_I2C_Mem_Write_DMA(
-        &hi2c1,
-        SSD1306_I2C_ADDR,
-        0x40,
-        I2C_MEMADD_SIZE_8BIT,
-        data,
-        len
-    );
-
-    // 2) DEBUG: resultado y registros DMA
-    /*//USB_Debug("Transmit_DMA returned %d, CCR=0x%08lX, CNDTR=%u\r\n",
-              ret,
-              DMA1_Channel6->CCR,
-              DMA1_Channel6->CNDTR);*/
-
-    if (ret != HAL_OK) {
-        // Error de DMA: libéralo para no colgarte
-        i2c1_tx_busy = 0;
-    }
+	i2c1_tx_busy = 1;
+	oled_io->Write(SSD1306_I2C_ADDR, ctrl,data,len);
 }
 
 
