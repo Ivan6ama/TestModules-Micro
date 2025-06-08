@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdlib.h>
 #include "comm_pro.h"
+#include "mpu6050.h"
 #include "usbd_cdc_if.h"
 #include "oled.h"
 #include "oled_fonts.h"
@@ -104,11 +105,43 @@ void oled_hal_write(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len);
 
 int oled_hal_write_single(uint8_t addr, uint8_t ctrl, uint8_t data);
 
+void oled_hal_write_comm(uint8_t addr, uint8_t data);
+
+int oled_hal_init_i2c(uint8_t address);
+
+
+void MPU_hal_write(uint8_t address, uint8_t control, uint8_t data);
+void MPU_hal_read();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #include "main.h"
+
+
+void MPU_hal_write(uint8_t address, uint8_t control, uint8_t data){
+
+	HAL_I2C_Mem_Write(&hi2c1, address, control, 1, &data, 1, HAL_MAX_DELAY);
+}
+
+void MPU_hal_read(){
+	uint8_t received_data[6];
+
+	 HAL_I2C_Mem_Read_DMA(&hi2c1, MPU6050_ADDR, ACCEL_XOUT_H_REG, 1, received_data, 6);
+}
+
+
+int oled_hal_init_i2c(uint8_t address){
+	uint8_t ret = 1;
+
+	if (HAL_I2C_IsDeviceReady(&hi2c1, address, 1, 2000) != HAL_OK) {
+		ret = 0;
+	}
+
+	return ret;
+}
+
 
 void oled_hal_write(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len) {
 	uint8_t buf[len + 1]; // buffer local m
@@ -117,11 +150,20 @@ void oled_hal_write(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len) {
 
     //HAL_I2C_Master_Transmit_DMA(&hi2c1, addr, buf, len + 1);
     HAL_I2C_Mem_Write_DMA(&hi2c1, addr, ctrl, I2C_MEMADD_SIZE_8BIT, data, len);
+
 }
 
 int oled_hal_write_single(uint8_t addr, uint8_t ctrl, uint8_t data) {
     uint8_t buf[2] = { ctrl, data };
+
     return (HAL_I2C_Master_Transmit(&hi2c1, addr, buf, 2, HAL_MAX_DELAY) == HAL_OK) ? 0 : -1;
+}
+
+void oled_hal_write_comm(uint8_t addr, uint8_t data){
+    //uint8_t buf[2] = { 0x00, data };
+
+    HAL_I2C_Mem_Write_DMA(&hi2c1, addr, 0x00, I2C_MEMADD_SIZE_8BIT, &data, 2);
+    //HAL_I2C_Master_Transmit_DMA(&hi2c1, addr, buf, 2);
 }
 
 void UNER_AppHandler(_eCmd cmd, _uWork *data)
@@ -199,10 +241,19 @@ int main(void)
   /* USER CODE BEGIN Init */
   OLED_IO_Interface_t oled_hal = {
       .Write = oled_hal_write,
-      .WriteSingle = oled_hal_write_single
+      .WriteSingle = oled_hal_write_single,
+	  .WriteComm = oled_hal_write_comm,
+	  .Init_I2C = oled_hal_init_i2c
   };
 
   OLED_RegisterIO(&oled_hal);
+
+  MPU_IO_Interface_t mpu_hal = {
+      .WriteConfig = MPU_hal_write,
+	  .Read = MPU_hal_read
+  };
+
+  MPU6050_RegisterIO(&mpu_hal);
 
   UNER_Init(&tx, bufTx, &rx, bufRx);
 
@@ -248,6 +299,7 @@ int main(void)
   Oled_Init();
   SSD1306_Clear();
 
+  MPU6050_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -258,6 +310,8 @@ int main(void)
 
 
 	  char texto[20];
+
+	  //SSD1306_DrawCircle(20, 20, 20, SSD1306_COLOR_WHITE);
 	  SSD1306_GotoXY(0, 0);
 	  sprintf(texto, "LSPD: %4d", leftMotorSpeed);
 	  SSD1306_Puts("   ", &Font_11x18, SSD1306_COLOR_WHITE); // limpiar línea

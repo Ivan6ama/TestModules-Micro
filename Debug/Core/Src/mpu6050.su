@@ -1,0 +1,4 @@
+../Core/Src/mpu6050.c:16:6:MPU6050_RegisterIO	16	static
+../Core/Src/mpu6050.c:20:6:MPU6050_Init	16	static
+../Core/Src/mpu6050.c:39:6:MPU6050_Read_Accel	16	static
+../Core/Src/mpu6050.c:97:6:MPU6050_Task	4	static

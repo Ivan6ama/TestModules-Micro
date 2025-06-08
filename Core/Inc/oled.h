@@ -49,6 +49,7 @@ SDA        |PB7          |Serial data line
 #include <oled_fonts.h>
 
 #include "stdlib.h"
+#include "stdint.h"
 #include "string.h"
 
 
@@ -80,6 +81,8 @@ typedef enum {
 typedef struct {
     void (*Write)(uint8_t address, uint8_t control, uint8_t* data, uint16_t length);  // para multibyte
     int (*WriteSingle)(uint8_t address, uint8_t control, uint8_t data);              // para 1 byte
+    void (*WriteComm)(uint8_t address, uint8_t data);              					// para 1 byte
+    int (*Init_I2C)(uint8_t address);              					// para 1 byte
 } OLED_IO_Interface_t;
 
 void OLED_RegisterIO(const OLED_IO_Interface_t* io);
@@ -317,7 +320,7 @@ void SSD1306_InvertDisplay (int i);
 
 void SSD1306_Clear (void);
 
-void SSD1306_I2C_WriteMulti(uint8_t address, uint8_t reg, uint8_t* data, uint16_t count);
+void SSD1306_I2C_WriteCommand(uint8_t address, uint8_t data);
 
 
 /* C++ detection */

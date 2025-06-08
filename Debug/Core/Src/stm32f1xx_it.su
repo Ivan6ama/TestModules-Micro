@@ -12,4 +12,4 @@
 ../Core/Src/stm32f1xx_it.c:241:6:USB_LP_CAN1_RX0_IRQHandler	8	static
 ../Core/Src/stm32f1xx_it.c:255:6:I2C1_EV_IRQHandler	8	static
 ../Core/Src/stm32f1xx_it.c:267:6:HAL_I2C_MemTxCpltCallback	16	static
-../Core/Src/stm32f1xx_it.c:285:6:HAL_ADC_ConvCpltCallback	16	static
+../Core/Src/stm32f1xx_it.c:284:6:HAL_ADC_ConvCpltCallback	16	static

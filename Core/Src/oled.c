@@ -26,11 +26,8 @@
 #include <stdarg.h>
 #include <string.h>
 
-extern I2C_HandleTypeDef hi2c1;
 /* Write command */
 #define SSD1306_WRITECOMMAND(command)      SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, (command))
-/* Write data */
-#define SSD1306_WRITEDATA(data)            SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x40, (data))
 /* Absolute value */
 #define ABS(x)   ((x) > 0 ? (x) : -(x))
 
@@ -53,6 +50,10 @@ extern volatile uint8_t i2c1_tx_busy;   // // Flag que indica si el DMA de I2C1 
 
 volatile uint8_t ssd_update_done = 1;
 
+uint8_t page;
+uint8_t state ; // 0=idle,1=prep,2=waiting DMA
+uint8_t counter;
+
 
 static const OLED_IO_Interface_t* oled_io = NULL;
 
@@ -74,9 +75,9 @@ void OLED_RegisterIO(const OLED_IO_Interface_t* io) {
 }
 
 void SSD1306_Task(void){
-	if (ssd_update_done) {
-		SSD1306_UpdateScreen(); // lanza siguiente refresco
-	}
+	//if (ssd_update_done) {
+	SSD1306_UpdateScreen(); // lanza siguiente refresco
+	//}
 }
 
 
@@ -183,54 +184,105 @@ uint8_t SSD1306_Init(void) {
     SSD1306_I2C_Init();
 
     //USB_Debug("SSD1306_Init: Comprobando I2C addr=0x%02X...\r\n", SSD1306_I2C_ADDR);
-    if (HAL_I2C_IsDeviceReady(&hi2c1, SSD1306_I2C_ADDR, 1, 2000) != HAL_OK) {
+    if (!oled_io->Init_I2C(SSD1306_I2C_ADDR)) {
         //USB_Debug("SSD1306_Init: ERROR, no responde I2C\r\n");
         return 0;
     }
-    //USB_Debug("SSD1306_Init: I2C OK\r\n");
 
-    //USB_Debug("SSD1306_Init: Retardo inicial...\r\n");
-    for (volatile uint32_t p = 250000; p; --p) { __NOP(); }
+    SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xAE);	// Set display OFF
+
+    SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x20); //Set Memory Addressing Mode
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x00); // 00b,Horizontal Addressing Mode; 01b,Vertical Addressing Mode;
+								// 10b,Page Addressing Mode (RESET); 11b,Invalid
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xC8); //Set COM Output Scan Direction
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x10); //---set low column address
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x00); //---set high column address
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x40); //--set start line address - CHECK
+
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x81);	// Set contrast control
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xFF);	// Max contrast
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA1); 	//--set segment re-map 0 to 127 - CHECK
+
+    SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA6); 	//--set normal color
+
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x3F); //
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA4); //0xa4,Output follows RAM content;0xa5,Output ignores RAM content
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD3); //-set display offset - CHECK
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x00); //-not offset
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD5); //--set display clock divide ratio/oscillator frequency
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xF0); //--set divide ratio
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD9); //--set pre-charge period
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x22); //
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xDA); //--set com pins hardware configuration - CHECK
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x12);
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xDB); //--set vcomh
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x20); //0x20,0.77xVcc
+
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x8D); //--set DC-DC enable
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x14); //
+	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xAF);	// Set display ON
 
     //USB_Debug("SSD1306_Init: Enviando comandos de init...\r\n");
-    SSD1306_WRITECOMMAND(0xAE);
-    SSD1306_WRITECOMMAND(0x20);
-    SSD1306_WRITECOMMAND(0x10);
-    SSD1306_WRITECOMMAND(0xB0);
-    SSD1306_WRITECOMMAND(0xC8);
-    SSD1306_WRITECOMMAND(0x00);
-    SSD1306_WRITECOMMAND(0x10);
-    SSD1306_WRITECOMMAND(0x40);
-    SSD1306_WRITECOMMAND(0x81);
-    SSD1306_WRITECOMMAND(0xFF);
-    SSD1306_WRITECOMMAND(0xA1);
-    SSD1306_WRITECOMMAND(0xA6);
-    SSD1306_WRITECOMMAND(0xA8);
-    SSD1306_WRITECOMMAND(0x3F);
-    SSD1306_WRITECOMMAND(0xA4);
-    SSD1306_WRITECOMMAND(0xD3);
-    SSD1306_WRITECOMMAND(0x00);
-    SSD1306_WRITECOMMAND(0xD5);
-    SSD1306_WRITECOMMAND(0xF0);
-    SSD1306_WRITECOMMAND(0xD9);
-    SSD1306_WRITECOMMAND(0x22);
-    SSD1306_WRITECOMMAND(0xDA);
-    SSD1306_WRITECOMMAND(0x12);
-    SSD1306_WRITECOMMAND(0xDB);
-    SSD1306_WRITECOMMAND(0x20);
-    SSD1306_WRITECOMMAND(0x8D);
-    SSD1306_WRITECOMMAND(0x14);
-    SSD1306_WRITECOMMAND(0xAF);
+//    SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xAE);	// Set display ON
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x20);	// Set Memory Addressing Mode
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x10);
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xB0);	// Set Page Start Address for Page Addressing Mode,0-7
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xC8);	// Set COM Output Scan Direction
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x00);	// 00b,Horizontal Addressing Mode; 01b,Vertical Addressing Mode;
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x10);
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x40);
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x81);	// Set contrast control
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xFF);	// Max contrast
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA1);	//--set segment re-map 0 to 127 - CHECK
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA6);	//--set normal color
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA8);	//--set multiplex ratio(1 to 64) - CHECK
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x3F);	// Seems to work for 128px high displays too.
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xA4);	//0xa4,Output follows RAM content;0xa5,Output ignores RAM content
 
-    SSD1306_WRITECOMMAND(SSD1306_DEACTIVATE_SCROLL);
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD3);	//-set display offset - CHECK
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x00);	//-not offset
+
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD5);	//--set display clock divide ratio/oscillator frequency
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xF0);	//--set divide ratio
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xD9);	//--set pre-charge period
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x22);
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xDA);	//--set com pins hardware configuration - CHECK
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x12);
+
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xDB);	//--set vcomh
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x20);	//0x20,0.77xVcc
+
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x8D);	//--set DC-DC enable
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0x14);
+
+//	SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, 0xAF);	// Set display ODF
+
+    SSD1306_I2C_Write(SSD1306_I2C_ADDR, 0x00, SSD1306_DEACTIVATE_SCROLL);
     //USB_Debug("SSD1306_Init: Comandos init enviados\r\n");
 
     //USB_Debug("SSD1306_Init: Limpiando pantalla...\r\n");
     SSD1306_Fill(SSD1306_COLOR_BLACK);
 
+    i2c1_tx_busy = 0;
+
 
     SSD1306.CurrentX = 0;
     SSD1306.CurrentY = 0;
+
     SSD1306.Initialized = 1;
 
     //USB_Debug("SSD1306_Init: COMPLETADO\r\n");
@@ -266,9 +318,6 @@ void SSD1306_UpdateScreen_Blocking(void) {
 
 
 void SSD1306_UpdateScreen(void) {
-    static uint8_t page  = 0;
-    static uint8_t state = 0; // 0=idle,1=prep,2=waiting DMA
-    uint8_t counter = 0;
 
     switch (state) {
         case 0:
@@ -279,19 +328,40 @@ void SSD1306_UpdateScreen(void) {
             // caemos en case 1 inmediatamente
         case 1:
             if (!i2c1_tx_busy) {
+            	SSD1306_I2C_WriteCommand(SSD1306_I2C_ADDR, 0xB0 + page);
                 ////USB_Debug("SSD1306_Update: enviando pagina %u\r\n", page);
                 // enviamos comandos de posición
-                SSD1306_WRITECOMMAND(0xB0 + page);
-                SSD1306_WRITECOMMAND(0x00);
-                SSD1306_WRITECOMMAND(0x10);
+//                SSD1306_WRITECOMMAND(0xB0 + page);
+//                SSD1306_WRITECOMMAND(0x00);
+//                SSD1306_WRITECOMMAND(0x10);
                 // arrancamos DMA de datos
-                uint8_t *buf = &SSD1306_Buffer[SSD1306_WIDTH * page];
-                SSD1306_I2C_WriteMulti(SSD1306_I2C_ADDR, 0x40, buf, SSD1306_WIDTH);
 
                 ////USB_Debug("SSD1306_Update: pagina enviada\r\n", page);
-                state = 2;
+                state = 3;
             }
             break;
+        case 3:
+        	if (!i2c1_tx_busy) {
+				SSD1306_I2C_WriteCommand(SSD1306_I2C_ADDR, 0x00);
+
+				state = 4;
+        	}
+        	break;
+        case 4:
+			if (!i2c1_tx_busy) {
+				SSD1306_I2C_WriteCommand(SSD1306_I2C_ADDR, 0x10);
+
+				state = 5;
+			}
+			break;
+        case 5:
+			if (!i2c1_tx_busy) {
+				uint8_t *buf = &SSD1306_Buffer[SSD1306_WIDTH * page];
+				SSD1306_I2C_WriteMulti(SSD1306_I2C_ADDR, 0x40, buf, SSD1306_WIDTH);
+
+				state = 2;
+			}
+			break;
         case 2:
             if (!i2c1_tx_busy) {
                 ////USB_Debug("SSD1306_Update: página %u completada\r\n", page);
@@ -303,12 +373,6 @@ void SSD1306_UpdateScreen(void) {
                     ssd_update_done = 1;
                     state           = 0;
                 }
-            } else {
-                // <— Aquí ves si realmente sigue ocupado
-            	if (counter <= 10) {
-            		counter++;
-            		////USB_Debug("SSD1306_Update: esperando fin de DMA, flag busy=%u\r\n", i2c1_tx_busy);
-            	}
             }
             break;
     }
@@ -330,7 +394,7 @@ void SSD1306_ToggleInvert(void) {
 
 void SSD1306_Fill(SSD1306_COLOR_t color) {
 	/* Set memory */
-	memset(SSD1306_Buffer, (color == SSD1306_COLOR_BLACK) ? 0x00 : 0xFF, sizeof(SSD1306_Buffer));
+	memset(SSD1306_Buffer, color, sizeof(SSD1306_Buffer));
 }
 
 void SSD1306_DrawPixel(uint16_t x, uint16_t y, SSD1306_COLOR_t color) {
@@ -721,6 +785,11 @@ void SSD1306_I2C_Write(uint8_t address, uint8_t control, uint8_t databyte) {
 void SSD1306_I2C_WriteMulti(uint8_t addr, uint8_t ctrl, uint8_t* data, uint16_t len) {
 	i2c1_tx_busy = 1;
 	oled_io->Write(SSD1306_I2C_ADDR, ctrl,data,len);
+}
+
+void SSD1306_I2C_WriteCommand(uint8_t address, uint8_t data){
+	i2c1_tx_busy = 1;
+	oled_io->WriteComm(SSD1306_I2C_ADDR, data);
 }
 
 
